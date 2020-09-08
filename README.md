@@ -23,12 +23,6 @@ The code is compatible with Python 3.6.4.
 
 ## Reproducing reported results
 - To reproduce the reported results for our approach, please refer to the any desired .ipynb file.
-- To reproduce the reported results for TransE, DistMult, Rescal, CP, ComplEx, RDFDNN and KGML, please consider the following steps:
-```
-git clone https://github.com/ttrouill/complex.git.
-git clone https://github.com/yo0826jp/KGML
-git clone https://github.com/yo0826jp/RDFDNN
-```
 - Run any desired .ipynb file
 
 
