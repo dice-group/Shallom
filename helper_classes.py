@@ -10,10 +10,13 @@ import pandas as pd
 import warnings
 import sys
 from abc import ABC, abstractmethod
+from sklearn.preprocessing import MultiLabelBinarizer
+from models import Shallom
+import torch
 
 warnings.filterwarnings('ignore')
 
-from util import performance_debugger
+from util import *
 
 
 class Data:
@@ -63,125 +66,119 @@ class Data:
         return sub_obj_pairs
 
 
-class Parser:
-    def __init__(self, logger=False, p_folder: str = 'not initialized', k=1):
-        self.path = 'uninitialized'
-        self.logger = logger
-        self.p_folder = p_folder
-        self.similarity_function = None
-        self.similarity_measurer = None
-        self.K = int(k)
+class Experiment:
+    def __init__(self, d, s):
+        self.dataset = d
+        self.settings = s
+        self.model_name = self.settings['model_name']
+        self.storage_path, _ = create_experiment_folder()
+        self.logger = create_logger(name=self.model_name, p=self.storage_path)
+        self.entity_idx = None  # will be filled.
 
-    def set_similarity_function(self, f):
-        self.similarity_function = f
+    def processed_data(self, dataset: Data):
+        """
 
-    def set_similarity_measure(self, f):
-        self.similarity_measurer = f
+        :type dataset: object
+        """
+        y = []
+        x = []
+        entitiy_idx = dict()
 
-    def set_experiment_path(self, p):
-        self.p_folder = p
+        sub_obj_pairs = dataset.get_entity_pairs_with_predicates(dataset.train_data)
+        for s_o_pair, predicates in sub_obj_pairs.items():
+            s, o = s_o_pair
+            entitiy_idx.setdefault(s, len(entitiy_idx))
+            entitiy_idx.setdefault(o, len(entitiy_idx))
+            x.append([entitiy_idx[s], entitiy_idx[o]])
+            y.append(list(predicates))
+        x = np.array(x)
 
-    def set_k_entities(self, k):
-        self.K = k
+        binarizer = MultiLabelBinarizer()
+        y = binarizer.fit_transform(y)
 
-    @performance_debugger('Preprocessing')
-    def pipeline_of_preprocessing(self, f_name, bound=''):
-        return self.inverted_index(f_name, bound)
+        return x, y, entitiy_idx, binarizer
 
-    @performance_debugger('Preprocessing')
-    def pipeline_of_preprocessing_new(self, f_name, bound=''):
-        return self.get_triples(f_name, bound)
+    def eval_relation_prediction(self, model: Shallom, binarizer, triples):
+        self.logger.info('Relation Prediction Evaluation begins.')
 
-    @performance_debugger('Constructing Inverted Index')
-    def get_triples(self, path, bound):
+        x_, y_ = [], []
 
-        vocabulary = {}
-        num_of_rdf = 0
+        hits = []
+        ranks = []
+        for i in range(10):
+            hits.append([])
 
-        sub_obj_pairs = dict()
-        sentences = ut.generator_of_reader(bound, ut.get_path_knowledge_graphs(path), ut.decompose_rdf)
+        rank_per_relation = dict()
 
-        predicates = set()
-        for s, p, o in sentences:
-            num_of_rdf += 1
+        for i in triples:  # test triples
+            s, p, o = i
+            x_.append((self.entity_idx[s], self.entity_idx[o]))
+            y_.append(p)
+        # generate predictions.
+        tensor_pred = torch.from_numpy(model.predict(np.array(x_)))
+        # faster sorting.
+        _, ranked_predictions = tensor_pred.topk(k=len(binarizer.classes_))
 
-            # mapping from string to vocabulary
-            vocabulary.setdefault(s, len(vocabulary))
-            predicates.add(p)
-            vocabulary.setdefault(o, len(vocabulary))
+        ranked_predictions = ranked_predictions.numpy()
 
-            sub_obj_pairs.setdefault((vocabulary[s], vocabulary[o]), set()).add(p)
+        assert len(ranked_predictions) == len(y_)
 
-        print('Number of RDF triples:', num_of_rdf)
-        print('Number of vocabulary terms: ', len(vocabulary))
-        print('Number of predicates: ', len(predicates))
+        classes_ = binarizer.classes_.tolist()
 
-        num_of_resources = len(vocabulary)
-        ut.serializer(object_=vocabulary, path=self.p_folder, serialized_name='vocabulary')
-        del vocabulary
+        for i in range(len(y_)):
+            true_relation = y_[i]
+            ith_class = classes_.index(true_relation)
 
-        num_of_entities = num_of_resources - len(predicates)
+            rank = np.where(ranked_predictions[i] == ith_class)[0]
 
-        return sub_obj_pairs, num_of_entities + 1
+            rank_per_relation.setdefault(true_relation, []).append(rank + 1)
 
-    @performance_debugger('Preprocessing')
-    def pipeline_of_data(self, f_name, bound=''):
-        sentences = ut.generator_of_reader(bound, ut.get_path_knowledge_graphs(f_name), ut.decompose_rdf)
-        vocabulary = {}
+            ranks.append(rank + 1)
 
-        data = []
-        num_of_rdf = 0
+            for hits_level in range(10):
+                if rank <= hits_level:
+                    hits[hits_level].append(1.0)
 
-        for s, p, o in sentences:
-            num_of_rdf += 1
+        hits = np.array(hits)
+        ranks = np.array(ranks)
+        self.logger.info('########## Relation Prediction Results ##########')
 
-            # mapping from string to vocabulary
-            vocabulary.setdefault(s, len(vocabulary))
-            vocabulary.setdefault(p, len(vocabulary))
-            vocabulary.setdefault(o, len(vocabulary))
+        self.logger.info('Mean Hits @5: {0}'.format(sum(hits[4]) / (float(len(y_)))))
+        self.logger.info('Mean Hits @3: {0}'.format(sum(hits[2]) / (float(len(y_)))))
+        self.logger.info('Mean @1: {0}'.format(sum(hits[0]) / (float(len(y_)))))
+        self.logger.info('Mean rank: {0}'.format(np.mean(ranks)))
+        self.logger.info('Mean reciprocal rank: {0}'.format(np.mean(1. / ranks)))
 
-            data.append((vocabulary[s], vocabulary[p], vocabulary[o]))
+        self.logger.info('########## Relation Prediction Analysis ##########')
 
-        num_of_resources = len(vocabulary)
-        ut.serializer(object_=vocabulary, path=self.p_folder, serialized_name='vocabulary')
-        del vocabulary
+        for pred, ranks in rank_per_relation.items():
+            ranks = np.array(ranks)
 
-        return data, num_of_resources
+            average_hit_at_1 = np.sum(ranks == 1) / len(ranks)
+            average_hit_at_3 = np.sum(ranks <= 3) / len(ranks)
+            average_hit_at_5 = np.sum(ranks <= 5) / len(ranks)
 
-    @performance_debugger('Constructing Inverted Index')
-    def inverted_index(self, path, bound):
+            self.logger.info('{0}:\t Hits@1:\t{1:.3f}'.format(pred, average_hit_at_1))
+            self.logger.info('{0}:\t Hits@3:\t{1:.3f}'.format(pred, average_hit_at_3))
+            self.logger.info('{0}:\t Hits@5:\t{1:.3f}'.format(pred, average_hit_at_5))
+            self.logger.info('{0}:\t MRR:\t{1:.3f}\t number of occurrence {2}'.format(pred, np.mean(1. / ranks), len(ranks)))
+            self.logger.info('################################')
 
-        inverted_index = {}
-        vocabulary = {}
+    def train_and_eval(self):
+        self.logger.info("Info pertaining to dataset:{0}".format(self.dataset.info))
+        self.logger.info("Number of triples in training data:{0}".format(len(self.dataset.train_data)))
+        self.logger.info("Number of triples in validation data:{0}".format(len(self.dataset.valid_data)))
+        self.logger.info("Number of triples in testing data:{0}".format(len(self.dataset.test_data)))
 
-        num_of_rdf = 0
-        type_info = defaultdict(set)
+        self.logger.info('Data is being reformating for multi-label classificaion.')
+        X, y, self.entity_idx, binarizer = self.processed_data(self.dataset)
+        model = Shallom(settings=self.settings, num_entities=len(self.entity_idx), num_relations=y.shape[1])
+        self.logger.info('Shallom starts training.')
+        model.fit(X, y)
+        self.eval_relation_prediction(model=model, binarizer=binarizer, triples=self.dataset.test_data)
+        self.logger.info('Keras model is being serialized.')
+        model.model.save(self.storage_path)  # serialize keras Sequential.
+        model.embeddings_save_csv(self.entity_idx,self.storage_path)
+        self.logger.info('Embeddings are stored as pandas dataframe.')
 
-        sentences = ut.generator_of_reader(bound, ut.get_path_knowledge_graphs(path), ut.decompose_rdf)
 
-        predicates = set()
-        for s, p, o in sentences:
-            num_of_rdf += 1
-
-            # mapping from string to vocabulary
-            vocabulary.setdefault(s, len(vocabulary))
-            vocabulary.setdefault(p, len(vocabulary))
-            predicates.add(vocabulary[p])
-            vocabulary.setdefault(o, len(vocabulary))
-
-            inverted_index.setdefault(vocabulary[s], []).extend([vocabulary[p], vocabulary[o]])
-
-        print('Number of RDF triples:', num_of_rdf)
-        print('Number of vocabulary terms: ', len(vocabulary))
-        print('Number of predicates: ', len(predicates))
-
-        num_of_resources = len(vocabulary)
-        ut.serializer(object_=vocabulary, path=self.p_folder, serialized_name='vocabulary')
-        del vocabulary
-
-        ut.serializer(object_=list(inverted_index.values()), path=self.p_folder, serialized_name='inverted_index')
-
-        ut.serializer(object_=type_info, path=self.p_folder, serialized_name='type_info')
-        del type_info
-
-        return inverted_index, num_of_resources, predicates
