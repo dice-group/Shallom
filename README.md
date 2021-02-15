@@ -1,7 +1,13 @@
 
 # A shallow neural model for relation prediction
 
-This repository contains the implementation of our approach (SHALLOM) along with experimental results for the reproducibility.
+Knowledge graph completion refers to predicting missing triples. Most approaches achieve this goal by predicting entities, given an entity and a relation. 
+We predict missing triples via the relation prediction. To this end, we frame the relation prediction problem as a multi-label classification problem and propose a shallow neural model (SHALLOM) that accurately infers missing relations from entities. 
+SHALLOM is analogous to C-BOW as both approaches predict a central token (p) given surrounding tokens ((s,o)). 
+By virtue of its architecture, SHALLOM requires a maximum training time of 8 minutes on benchmark datasets including WN18RR, FB15K-237 and YAGO3-10. 
+
+Hence, one does not need to win the hardware lottery to use SHALLOM for predicting missing information on knowledge graphs.
+More information can be found in ([Research paper](https://arxiv.org/abs/2101.09090) and [conference presentation](https://www.youtube.com/watch?v=LUDpdgdvTQg)).
 
 ## Installation
 
@@ -30,12 +36,10 @@ The code is compatible with Python 3.6.4.
 
 If you use SHALLOM, please cite the following publication:
 ```
-@inproceedings{
-  XXX,
+@article{demir2021shallow,
   title={A shallow neural model for relation prediction},
-  author={Caglar Demir and Diego Moussallem and Axel-Cyrille Ngonga Ngomo},
-  booktitle={XXX},
-  year={2020},
-  url={XXX}
+  author={Demir, Caglar and Moussallem, Diego and Ngomo, Axel-Cyrille Ngonga},
+  journal={arXiv preprint arXiv:2101.09090},
+  year={2021}
 }
 ```
