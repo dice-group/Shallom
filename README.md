@@ -1,4 +1,8 @@
 # Shallom
+This open-source project contains the Python implementation of our approach Shallom, training and evaluation scripts. 
+We added Shallom into [Knowledge Graph Embeddings at Scale](https://github.com/dice-group/DAIKIRI-Embedding) open-source project to ease the deployment and the distributed computing.
+Therein, we provided pre-trained models on many large knowledge graphs.
+
 ### A shallow neural model for relation prediction
 <p style="text-align: center;font-size:15px;"> <a href="https://arxiv.org/pdf/2101.09090.pdf"><img src="http://img.shields.io/badge/Paper-PDF-blue.svg"></a> <a href="https://www.youtube.com/watch?v=LUDpdgdvTQg"><img src="http://img.shields.io/badge/Youtube-Video-red.svg"></a></p>
 
@@ -44,6 +48,6 @@ If you use SHALLOM, please cite the following publication:
   organization={IEEE}
 }
 ```
-For any further questions, please contact:  ```caglar.demir@upb.de```
+For any further questions, please contact:  ```caglar.demir@upb.de``` or ```caglardemir8@gmail.com```
 ## License
 <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
